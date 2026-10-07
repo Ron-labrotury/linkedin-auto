@@ -14,7 +14,23 @@ npm run dev        # http://localhost:5173
 npm run build      # typecheck + production build
 ```
 
-Requires Node 20+.
+Requires Node 20.19+.
+
+## Deploy to Vercel
+
+The repo is ready for Vercel as is: `vercel.json` at the root builds `frontend/` and serves
+`frontend/dist`.
+
+1. On vercel.com: **Add New → Project**, then import `Ron-labrotury/linkedin-auto`.
+2. Leave **Root Directory** as the repo root and the framework preset as detected. The settings in
+   `vercel.json` (install, build, output) take priority over the dashboard.
+3. Click **Deploy**. Pushes to `main` deploy to production, and other branches get preview URLs.
+
+Every path is rewritten to `index.html`, so deep links like `/campaigns/123` work on refresh.
+If you'd rather set **Root Directory** to `frontend`, that works too: `frontend/vercel.json`
+carries the same rewrite.
+
+No environment variables are needed yet.
 
 ## What's in the UI
 
