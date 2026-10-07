@@ -1,0 +1,50 @@
+@import "tailwindcss";
+@import "@xyflow/react/dist/style.css";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+
+  --color-bg: #0e1526;
+  --color-sidebar: #111a2e;
+  --color-panel: #162036;
+  --color-panel-2: #1c2842;
+  --color-line: #2a3654;
+  --color-line-strong: #3a4a70;
+
+  --color-ink: #eef1f8;
+  --color-ink-2: #b4bdd3;
+  --color-ink-3: #7c88a6;
+
+  --color-brand: #8b7cf6;
+  --color-brand-strong: #7462f0;
+  --color-brand-soft: #2a2752;
+
+  --color-ok: #4ade80;
+  --color-warn: #fbbf24;
+  --color-bad: #f87171;
+  --color-info: #60a5fa;
+  --color-accent: #fb7a5c;
+}
+
+html, body, #root { height: 100%; }
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+* { scrollbar-width: thin; scrollbar-color: var(--color-line-strong) transparent; }
+
+/* React Flow dark tweaks */
+.react-flow { --xy-background-color: transparent; }
+.react-flow__attribution { display: none; }
+.react-flow__controls { box-shadow: none; }
+.react-flow__controls-button {
+  background: var(--color-panel-2); border-bottom: 1px solid var(--color-line);
+  color: var(--color-ink); fill: var(--color-ink);
+}
+.react-flow__controls-button:hover { background: var(--color-line); }
+.react-flow__controls-button svg { fill: var(--color-ink); }
+.react-flow__minimap { background: var(--color-panel); border: 1px solid var(--color-line); border-radius: 10px; overflow: hidden; }
+.react-flow__handle { opacity: 0; pointer-events: none; }
