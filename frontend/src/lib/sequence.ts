@@ -1,44 +1,59 @@
-import type { ActionKind, BranchKey, ConditionKind, Sequence, SequenceStep, StepKind } from '../types'
-import { uid } from './utils'
+/**
+ * UI metadata for the sequence builder. The model itself (make / insert / delete / validate)
+ * lives in @shared/sequence.ts so the builder and the engine agree.
+ */
+import type { ActionKind, ConditionKind, Delay, DelayUnit, Duration, Sequence, SequenceStep, StepKind } from '@shared/types.ts'
+import { INVITE_NOTE_LIMIT, MAX_DELAY_DAYS, TEMPLATE_VARIABLES, renderTemplate } from '@shared/sequence.ts'
 
 export interface StepMeta {
   label: string
-  short: string
   description: string
-  channel: 'linkedin' | 'email' | 'logic'
+  channel: 'linkedin' | 'logic'
 }
 
 export const STEP_META: Record<StepKind, StepMeta> = {
-  view_profile: { label: 'View profile', short: 'View', description: 'Visit the lead’s profile so they see you in “Who viewed my profile”.', channel: 'linkedin' },
-  follow: { label: 'Follow', short: 'Follow', description: 'Follow the lead to show up in their notifications.', channel: 'linkedin' },
-  endorse: { label: 'Endorse skills', short: 'Endorse', description: 'Endorse up to 5 of the lead’s top skills.', channel: 'linkedin' },
-  like_post: { label: 'Like latest post', short: 'Like', description: 'Like the lead’s most recent post or article.', channel: 'linkedin' },
-  invite: { label: 'Send invite', short: 'Invite', description: 'Send a connection request, optionally with a personal note (300 chars).', channel: 'linkedin' },
-  message: { label: 'Send message', short: 'Message', description: 'Send a LinkedIn message. Only reaches 1st-degree connections.', channel: 'linkedin' },
-  withdraw: { label: 'Withdraw invite', short: 'Withdraw', description: 'Withdraw a pending connection request that was not accepted.', channel: 'linkedin' },
-  find_email: { label: 'Find email', short: 'Find email', description: 'Look up the lead’s business email address.', channel: 'email' },
-  email: { label: 'Send email', short: 'Email', description: 'Send an email from your connected mailbox.', channel: 'email' },
-  condition: { label: 'Condition', short: 'If', description: 'Split the sequence into Yes / No branches.', channel: 'logic' },
-  end: { label: 'End', short: 'End', description: 'Stop the sequence for this lead.', channel: 'logic' },
+  invite: { label: 'Send invite', description: 'Send a connection request, optionally with a personal note (up to 300 characters).', channel: 'linkedin' },
+  message: { label: 'Send message', description: 'Send a LinkedIn message. Only reaches 1st-degree connections.', channel: 'linkedin' },
+  view_profile: { label: 'View profile', description: 'Visit the lead’s profile so they see you in “Who viewed my profile”.', channel: 'linkedin' },
+  follow: { label: 'Follow', description: 'Follow the lead so you show up in their notifications.', channel: 'linkedin' },
+  like_post: { label: 'Like latest post', description: 'Like the lead’s most recent post, if they have one.', channel: 'linkedin' },
+  withdraw: { label: 'Withdraw invite', description: 'Withdraw a connection request that is still pending.', channel: 'linkedin' },
+  condition: { label: 'Condition', description: 'Split the sequence into Yes / No branches.', channel: 'logic' },
+  end: { label: 'End', description: 'Stop the sequence for this lead.', channel: 'logic' },
 }
 
-export const ACTION_GROUPS: { title: string; kinds: (ActionKind | 'condition')[] }[] = [
-  { title: 'LinkedIn actions', kinds: ['view_profile', 'invite', 'message', 'follow', 'endorse', 'like_post', 'withdraw'] },
-  { title: 'Email actions', kinds: ['find_email', 'email'] },
-  { title: 'Logic', kinds: ['condition'] },
+export const ACTION_GROUPS: { title: string; kinds: ActionKind[] }[] = [
+  { title: 'LinkedIn actions', kinds: ['invite', 'message', 'view_profile', 'follow', 'like_post', 'withdraw'] },
 ]
 
-export const CONDITION_META: Record<ConditionKind, { label: string; question: string }> = {
-  accepted_invite: { label: 'Invite accepted', question: 'Accepted the invite?' },
-  is_connected: { label: 'Is connected', question: 'Already a 1st-degree connection?' },
-  replied: { label: 'Replied', question: 'Replied to a message?' },
-  has_email: { label: 'Has email', question: 'Email address found?' },
-  opened_email: { label: 'Opened email', question: 'Opened the email?' },
+export const CONDITION_META: Record<ConditionKind, { label: string; question: string; description: string; yes: string; no: string }> = {
+  accepted_invite: {
+    label: 'If invite accepted',
+    question: 'Accepted your invite?',
+    description: 'Wait for the lead to accept your connection request.',
+    yes: 'as soon as the lead accepts your invite',
+    no: 'if the invite is still not accepted',
+  },
+  is_connected: {
+    label: 'If connected',
+    question: 'Is a 1st-degree connection?',
+    description: 'Check whether the lead is already one of your connections.',
+    yes: 'as soon as the lead is a 1st-degree connection',
+    no: 'if the lead is still not connected',
+  },
+  replied: {
+    label: 'If replied',
+    question: 'Replied to your message?',
+    description: 'Wait for the lead to reply to you on LinkedIn.',
+    yes: 'as soon as the lead replies',
+    no: 'if there is still no reply',
+  },
 }
 
-export const TEMPLATE_VARIABLES = ['first_name', 'last_name', 'company', 'title', 'location'] as const
+export const CONDITION_ORDER: ConditionKind[] = ['accepted_invite', 'replied', 'is_connected']
 
-export const SAMPLE_VARS: Record<string, string> = {
+/** Example lead used for message previews. */
+export const SAMPLE_VARS = {
   first_name: 'Mike',
   last_name: 'Johnson',
   company: 'Acme Corp',
@@ -46,202 +61,98 @@ export const SAMPLE_VARS: Record<string, string> = {
   location: 'Pune, India',
 }
 
-export const INVITE_NOTE_LIMIT = 300
+export const DELAY_UNITS: { id: DelayUnit; label: string }[] = [
+  { id: 'minutes', label: 'minutes' },
+  { id: 'hours', label: 'hours' },
+  { id: 'days', label: 'days' },
+]
 
-export function makeStep(kind: StepKind): SequenceStep {
-  const base: SequenceStep = { id: uid('step'), kind, delay: { days: 0, hours: 0 }, config: {} }
-  switch (kind) {
-    case 'invite':
-      return { ...base, config: { message: 'Hi {{first_name}}, I came across your profile and would love to connect.' } }
-    case 'message':
-      return { ...base, delay: { days: 1, hours: 0 }, config: { message: 'Thanks for connecting, {{first_name}}! ' } }
-    case 'email':
-      return { ...base, delay: { days: 1, hours: 0 }, config: { subject: 'Quick question, {{first_name}}', message: 'Hi {{first_name}},\n\n' } }
-    case 'endorse':
-      return { ...base, config: { skillsCount: 3 } }
-    case 'condition':
-      return { ...base, config: { condition: 'accepted_invite', withinDays: 7 } }
-    default:
-      return base
-  }
+const UNIT_MINUTES: Record<DelayUnit, number> = { minutes: 1, hours: 60, days: 1440 }
+const MAX_MINUTES = MAX_DELAY_DAYS * 1440
+
+/** Title shown on a step card (conditions show what they check). */
+export function stepTitle(step: Pick<SequenceStep, 'kind' | 'config'>) {
+  if (step.kind === 'condition') return CONDITION_META[step.config.condition ?? 'accepted_invite']?.label ?? 'Condition'
+  return STEP_META[step.kind]?.label ?? 'Unknown step'
 }
 
-export const emptySequence = (): Sequence => ({ rootId: null, steps: {} })
-
-export function branchesOf(step: SequenceStep): BranchKey[] {
-  if (step.kind === 'end') return []
-  return step.kind === 'condition' ? ['yes', 'no'] : ['next']
+/** Step numbers in reading order (depth first, Yes before No) – matches the canvas. */
+export function stepNumbers(seq: Sequence): Map<string, number> {
+  const out = new Map<string, number>()
+  const visit = (id: string | null | undefined) => {
+    if (!id || out.has(id) || !seq.steps[id]) return
+    out.set(id, out.size + 1)
+    const s = seq.steps[id]
+    visit(s.next)
+    visit(s.yes)
+    visit(s.no)
+  }
+  visit(seq.rootId)
+  return out
 }
 
-/** Insert a step at `parentId[branch]` (or as root if parentId is null). Existing child is reattached below. */
-export function insertStep(seq: Sequence, parentId: string | null, branch: BranchKey, step: SequenceStep): Sequence {
-  const steps = { ...seq.steps }
-  const existing = parentId ? steps[parentId]?.[branch] ?? null : seq.rootId
-  const s: SequenceStep = { ...step }
-  if (existing) {
-    if (s.kind === 'condition') s.yes = existing
-    else if (s.kind !== 'end') s.next = existing
-    else {
-      // inserting an "end" mid-sequence drops the rest
-      removeSubtree(steps, existing)
-    }
-  }
-  steps[s.id] = s
-  if (parentId) {
-    steps[parentId] = { ...steps[parentId], [branch]: s.id }
-    return { ...seq, steps }
-  }
-  return { rootId: s.id, steps }
-}
-
-function removeSubtree(steps: Record<string, SequenceStep>, id: string | null | undefined) {
-  if (!id || !steps[id]) return
-  const s = steps[id]
-  delete steps[id]
-  removeSubtree(steps, s.next)
-  removeSubtree(steps, s.yes)
-  removeSubtree(steps, s.no)
-}
-
-export function findParent(seq: Sequence, id: string): { parentId: string | null; branch: BranchKey } | null {
-  if (seq.rootId === id) return { parentId: null, branch: 'next' }
-  for (const s of Object.values(seq.steps)) {
-    for (const b of ['next', 'yes', 'no'] as BranchKey[]) if (s[b] === id) return { parentId: s.id, branch: b }
-  }
+/** Problem with a step's random wait, or null. */
+export function delayError(d: Delay): string | null {
+  if (![d.min, d.max].every((n) => Number.isFinite(n) && n >= 0)) return 'Enter a number of 0 or more'
+  if (d.min > d.max) return 'The minimum can’t be more than the maximum'
+  if (d.max * UNIT_MINUTES[d.unit] > MAX_MINUTES) return `The wait can be at most ${MAX_DELAY_DAYS} days`
   return null
 }
 
-/** Delete a step. Linear steps are spliced out; conditions remove both branches. */
-export function deleteStep(seq: Sequence, id: string): Sequence {
-  const target = seq.steps[id]
-  if (!target) return seq
-  const parent = findParent(seq, id)
-  const steps = { ...seq.steps }
-  let replacement: string | null = null
-  if (target.kind === 'condition') {
-    removeSubtree(steps, target.yes)
-    removeSubtree(steps, target.no)
-  } else {
-    replacement = target.next ?? null
-  }
-  delete steps[id]
-  if (!parent) return { ...seq, steps }
-  if (parent.parentId === null) return { rootId: replacement, steps }
-  steps[parent.parentId] = { ...steps[parent.parentId], [parent.branch]: replacement }
-  return { ...seq, steps }
+/** Problem with a condition's waiting time, or null. */
+export function withinError(w: Duration | undefined): string | null {
+  if (!w || !Number.isFinite(w.value) || w.value <= 0) return 'Enter a waiting time of at least 1'
+  if (w.value * UNIT_MINUTES[w.unit] > MAX_MINUTES) return `The waiting time can be at most ${MAX_DELAY_DAYS} days`
+  return null
 }
 
-export function updateStep(seq: Sequence, id: string, patch: Partial<SequenceStep>): Sequence {
-  return { ...seq, steps: { ...seq.steps, [id]: { ...seq.steps[id], ...patch } } }
+/** `{{variable}}` names used in a text that the engine doesn't know. */
+export function unknownVariables(text: string, known: readonly string[]) {
+  const found = new Set<string>()
+  for (const m of text.matchAll(/\{\{\s*([^}]*?)\s*\}\}/g)) if (!known.includes(m[1])) found.add(m[1])
+  return [...found]
 }
 
-export function countSteps(seq: Sequence) {
-  return Object.values(seq.steps).filter((s) => s.kind !== 'end').length
+/** Typical length of each template variable, for estimating how long a personalised text gets. */
+export const TYPICAL_VARIABLE_LENGTHS: Record<(typeof TEMPLATE_VARIABLES)[number], number> = {
+  first_name: 10,
+  last_name: 12,
+  company: 25,
+  title: 40,
+  location: 20,
 }
 
-export interface ValidationIssue {
-  stepId: string
-  message: string
+/** Length of `text` once its {{variables}} are filled with values of typical length (rendered like the engine does). */
+export function personalisedLength(text: string) {
+  const vars = Object.fromEntries(TEMPLATE_VARIABLES.map((v) => [v, 'x'.repeat(TYPICAL_VARIABLE_LENGTHS[v])])) as Record<(typeof TEMPLATE_VARIABLES)[number], string>
+  return renderTemplate(text, vars).length
 }
 
-export function validateSequence(seq: Sequence): ValidationIssue[] {
-  const issues: ValidationIssue[] = []
-  for (const s of Object.values(seq.steps)) {
-    if ((s.kind === 'message' || s.kind === 'email') && !s.config.message?.trim())
-      issues.push({ stepId: s.id, message: `${STEP_META[s.kind].label}: message is empty` })
-    if (s.kind === 'email' && !s.config.subject?.trim())
-      issues.push({ stepId: s.id, message: 'Send email: subject is empty' })
-    if (s.kind === 'invite' && (s.config.message?.length ?? 0) > INVITE_NOTE_LIMIT)
-      issues.push({ stepId: s.id, message: `Send invite: note exceeds ${INVITE_NOTE_LIMIT} characters` })
-  }
-  return issues
+/**
+ * An invite note that fits the 300-character limit as written but probably not once personalised
+ * (the engine then shortens it to 300 characters): its estimated length, else null.
+ */
+export function inviteNoteOverflow(note: string): number | null {
+  if (note.length > INVITE_NOTE_LIMIT) return null // already over as written – that's an error, not a warning
+  const n = personalisedLength(note)
+  return n > INVITE_NOTE_LIMIT ? n : null
 }
 
-/* ---------- Templates ---------- */
-
-function chain(kinds: (SequenceStep | StepKind)[]): { first: SequenceStep; all: SequenceStep[] } {
-  const all = kinds.map((k) => (typeof k === 'string' ? makeStep(k) : k))
-  for (let i = 0; i < all.length - 1; i++) all[i].next = all[i + 1].id
-  return { first: all[0], all }
+/**
+ * "If replied" conditions with steps on their Yes branch. With the campaign setting "Stop the sequence
+ * when a lead replies" on, a detected reply finishes the lead, so those steps never run.
+ * Ids in reading order.
+ */
+export function repliedYesBranchSteps(seq: Sequence): string[] {
+  const order = stepNumbers(seq)
+  return Object.values(seq.steps)
+    .filter((s) => s.kind === 'condition' && s.config.condition === 'replied' && hasRunnableStep(seq, s.yes))
+    .map((s) => s.id)
+    .sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0))
 }
 
-function toSequence(all: SequenceStep[], rootId: string): Sequence {
-  return { rootId, steps: Object.fromEntries(all.map((s) => [s.id, s])) }
+/** Whether the branch starting at `id` holds anything but a lone End. */
+export function hasRunnableStep(seq: Sequence, id: string | null | undefined) {
+  const s = id ? seq.steps[id] : undefined
+  return !!s && s.kind !== 'end'
 }
-
-export interface SequenceTemplate {
-  id: string
-  name: string
-  description: string
-  build: () => Sequence
-}
-
-export const SEQUENCE_TEMPLATES: SequenceTemplate[] = [
-  {
-    id: 'blank',
-    name: 'Start from scratch',
-    description: 'An empty canvas. Add steps one by one.',
-    build: emptySequence,
-  },
-  {
-    id: 'connect_follow_up',
-    name: 'Connect + follow up',
-    description: 'View profile → invite → if accepted, message twice; otherwise withdraw.',
-    build: () => {
-      const view = makeStep('view_profile')
-      const invite = { ...makeStep('invite'), delay: { days: 1, hours: 0 } }
-      const cond = makeStep('condition')
-      const msg1 = makeStep('message')
-      const cond2 = { ...makeStep('condition'), config: { condition: 'replied' as const, withinDays: 3 } }
-      const msg2 = { ...makeStep('message'), delay: { days: 0, hours: 0 }, config: { message: 'Hi {{first_name}}, just bumping this up in case it got buried.' } }
-      const endReplied = makeStep('end')
-      const withdraw = makeStep('withdraw')
-      view.next = invite.id
-      invite.next = cond.id
-      cond.yes = msg1.id
-      cond.no = withdraw.id
-      msg1.next = cond2.id
-      cond2.yes = endReplied.id
-      cond2.no = msg2.id
-      return toSequence([view, invite, cond, msg1, cond2, msg2, endReplied, withdraw], view.id)
-    },
-  },
-  {
-    id: 'warm_up',
-    name: 'Warm up, then connect',
-    description: 'View → follow → endorse → like a post → invite with note.',
-    build: () => {
-      const { first, all } = chain([
-        'view_profile',
-        { ...makeStep('follow'), delay: { days: 1, hours: 0 } },
-        { ...makeStep('endorse'), delay: { days: 1, hours: 0 } },
-        { ...makeStep('like_post'), delay: { days: 1, hours: 0 } },
-        { ...makeStep('invite'), delay: { days: 1, hours: 0 } },
-      ])
-      return toSequence(all, first.id)
-    },
-  },
-  {
-    id: 'multichannel',
-    name: 'LinkedIn + email',
-    description: 'Invite; if not accepted in 7 days, find their email and send an email instead.',
-    build: () => {
-      const view = makeStep('view_profile')
-      const invite = makeStep('invite')
-      const cond = makeStep('condition')
-      const msg = makeStep('message')
-      const find = makeStep('find_email')
-      const hasEmail = { ...makeStep('condition'), config: { condition: 'has_email' as const, withinDays: 1 } }
-      const email = makeStep('email')
-      const end = makeStep('end')
-      view.next = invite.id
-      invite.next = cond.id
-      cond.yes = msg.id
-      cond.no = find.id
-      find.next = hasEmail.id
-      hasEmail.yes = email.id
-      hasEmail.no = end.id
-      return toSequence([view, invite, cond, msg, find, hasEmail, email, end], view.id)
-    },
-  },
-]

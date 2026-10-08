@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react'
-import type { BranchKey } from '../../types'
+import type { BranchKey } from '@shared/types.ts'
 
 export interface SequenceCtx {
   readOnly: boolean

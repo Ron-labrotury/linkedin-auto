@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Jane Doe | LinkedIn</title></head>
+<body>
+<header id="global-nav" class="global-nav"></header>
+<main id="main" class="scaffold-layout__main"><section class="artdeco-card"><h1>Jane Doe</h1></section></main>
+
+<!--
+  LinkedIn renders messaging inside the #interop-outlet shadow root. Slots: MESSAGES (Jane's
+  thread), BEFORE (another conversation window before Jane's), LIST_EXTRA (after Jane's message
+  list, e.g. a loader) and FORM_EXTRA (in Jane's message form footer).
+-->
+<div id="interop-outlet" data-testid="interop-shadowdom"></div>
+<template id="overlay">
+  <aside id="msg-overlay" class="msg-overlay-container" style="position: fixed; right: 0; bottom: 0; display: flex; align-items: flex-end; gap: 8px;">
+    {{BEFORE}}
+    <div class="msg-overlay-conversation-bubble msg-overlay-conversation-bubble--is-active msg-overlay-conversation-bubble--petite" role="dialog" aria-label="Messaging conversation with Jane Doe" style="width: 400px; height: 480px; display: flex; flex-direction: column; background: #fff;">
+      <header class="msg-overlay-bubble-header">
+        <div class="msg-overlay-bubble-header__details">
+          <h2 class="msg-overlay-bubble-header__title truncate t-14 t-bold t-black pr1">
+            <a class="profile-card-one-to-one__profile-link" href="/in/jane-doe-1a2b3c/"><span class="t-14 t-bold hoverable-link-text t-black">Jane Doe</span></a>
+          </h2>
+        </div>
+        <div class="msg-overlay-bubble-header__controls display-flex align-items-center">
+          <button class="msg-overlay-bubble-header__control artdeco-button artdeco-button--circle artdeco-button--muted artdeco-button--1 artdeco-button--tertiary" type="button"><span class="artdeco-button__text">Open the options list in your conversation with Jane Doe</span></button>
+          <button class="msg-overlay-bubble-header__control artdeco-button artdeco-button--circle artdeco-button--muted artdeco-button--1 artdeco-button--tertiary" type="button"><span class="artdeco-button__text">Minimize your conversation with Jane Doe</span></button>
+          <button class="msg-overlay-bubble-header__control artdeco-button artdeco-button--circle artdeco-button--muted artdeco-button--1 artdeco-button--tertiary" type="button"><span class="artdeco-button__text">Close your conversation with Jane Doe</span></button>
+        </div>
+      </header>
+      <div class="msg-s-message-list-container relative display-flex mbA ember-view" style="flex: 1; overflow: auto;">
+        <div class="msg-s-message-list full-width scrollable">
+          <ul class="msg-s-message-list-content list-style-none full-width mbA">{{MESSAGES}}</ul>
+        </div>
+        {{LIST_EXTRA}}
+      </div>
+      <form class="msg-form">
+        <div class="msg-form__msg-content-container">
+          <div class="msg-form__message-texteditor relative flex-grow-1 display-flex">
+            <div aria-label="Write a message…" aria-multiline="true" role="textbox" contenteditable="true" class="msg-form__contenteditable t-14 t-black--light t-normal flex-grow-1 full-height notranslate" style="min-height: 80px;"><p><br></p></div>
+          </div>
+        </div>
+        <footer class="msg-form__footer flex-shrink-zero">
+          {{FORM_EXTRA}}
+          <div class="msg-form__right-actions display-flex align-items-center">
+            <button class="msg-form__send-button artdeco-button artdeco-button--1" disabled type="submit"><span class="artdeco-button__text">Send</span></button>
+          </div>
+        </footer>
+      </form>
+    </div>
+  </aside>
+  <!-- the pinned "Messaging" bar keeps its own (off-screen) composer -->
+  <div class="msg-overlay-list-bubble" style="position: fixed; top: 2000px; left: 0; width: 300px;">
+    <header class="msg-overlay-bubble-header"><span>Messaging</span></header>
+    <form class="msg-form"><div class="msg-form__contenteditable" contenteditable="true" role="textbox" aria-label="Write a message…" style="min-height: 200px; width: 300px;"><p>stale draft</p></div>
+      <button class="msg-form__send-button" type="submit">Send</button></form>
+  </div>
+</template>
+<script>
+  const root = document.getElementById('interop-outlet').attachShadow({ mode: 'open' })
+  root.appendChild(document.getElementById('overlay').content.cloneNode(true))
+</script>
+</body>
+</html>

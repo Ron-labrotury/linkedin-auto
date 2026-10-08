@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>LinkedIn Login, Sign in | LinkedIn</title>
+<style>.hidden__imp { display: none !important; }</style></head>
+<body>
+<!-- {{USERNAME_ERROR}} / {{PASSWORD_ERROR}} are filled in for failed attempts ("" hides them). -->
+<header class="header__content"><a href="/" aria-label="LinkedIn">LinkedIn</a></header>
+<main class="app__content" role="main">
+  <div class="card-layout">
+    <div id="organic-div">
+      <div class="header__content">
+        <h1 class="header__content__heading">Sign in</h1>
+        <p class="header__content__subheading">Stay updated on your professional world</p>
+      </div>
+      <form method="post" class="login__form" action="/checkpoint/lg/login-submit" novalidate>
+        <input name="csrfToken" value="ajax:5555" type="hidden">
+        <div class="form__input--floating mt-24">
+          <input id="username" name="session_key" type="email" aria-describedby="error-for-username" required autocomplete="username" value="{{USERNAME}}">
+          <label for="username" class="form__label--floating">Email or phone</label>
+          <div id="error-for-username" class="form__label--error {{USERNAME_ERROR_CLASS}}" role="alert" aria-live="assertive">{{USERNAME_ERROR}}</div>
+        </div>
+        <div class="form__input--floating mt-24">
+          <input id="password" name="session_password" type="password" aria-describedby="error-for-password" required autocomplete="current-password">
+          <label for="password" class="form__label--floating">Password</label>
+          <div id="error-for-password" class="form__label--error {{PASSWORD_ERROR_CLASS}}" role="alert" aria-live="assertive">{{PASSWORD_ERROR}}</div>
+        </div>
+        <a href="/checkpoint/rp/request-password-reset" class="btn__tertiary--medium action__btn">Forgot password?</a>
+        <div class="login__form_action_container">
+          <button class="btn__primary--large from__button--floating" data-litms-control-urn="login-submit" aria-label="Sign in" type="submit">Sign in</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <p class="join-now">New to LinkedIn? <a href="/signup">Join now</a> · Get the LinkedIn app</p>
+</main>
+</body>
+</html>

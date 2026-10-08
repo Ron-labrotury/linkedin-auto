@@ -26,12 +26,36 @@
   --color-accent: #fb7a5c;
 }
 
+/* dark UI: native controls (time pickers, selects, scrollbars, autofill) follow the theme */
+:root { color-scheme: dark; }
+
 html, body, #root { height: 100%; }
 body {
   background: var(--color-bg);
   color: var(--color-ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+}
+
+::selection { background: color-mix(in oklab, var(--color-brand) 45%, transparent); }
+
+a:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 2px; border-radius: 4px; }
+
+/* time inputs: make the picker icon visible on the dark field */
+input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.8); cursor: pointer; }
+
+/* keep browser autofill from painting inputs light yellow */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--color-ink);
+  -webkit-box-shadow: 0 0 0 1000px var(--color-panel-2) inset;
+  caret-color: var(--color-ink);
+  transition: background-color 9999s ease-out 0s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
 
 * { scrollbar-width: thin; scrollbar-color: var(--color-line-strong) transparent; }

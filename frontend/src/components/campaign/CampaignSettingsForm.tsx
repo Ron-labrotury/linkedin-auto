@@ -1,28 +1,32 @@
 import type { ReactNode } from 'react'
-import type { CampaignSettings } from '../../types'
+import { Link } from 'react-router-dom'
+import { Clock, ShieldCheck } from 'lucide-react'
+import type { CampaignSettings } from '@shared/types.ts'
 import { cn } from '../../lib/utils'
-import { Checkbox, Field, Input, Select } from '../ui'
+import { Field, Input, Toggle } from '../ui'
+import { LIMITS, NAME_MAX, settingsErrors, type LimitKey } from './settings'
 
-const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-const TIMEZONES = ['Asia/Kolkata', 'Asia/Dubai', 'Asia/Singapore', 'Europe/London', 'Europe/Berlin', 'America/New_York', 'America/Chicago', 'America/Los_Angeles', 'Australia/Sydney', 'UTC']
-
-/** LinkedIn's practical safe limits. The backend should enforce these too. */
-const LIMITS = {
-  dailyInvites: { max: 100, safe: 30, label: 'Connection invites / day' },
-  dailyMessages: { max: 150, safe: 50, label: 'Messages / day' },
-  dailyProfileViews: { max: 150, safe: 60, label: 'Profile views / day' },
-  dailyEmails: { max: 300, safe: 100, label: 'Emails / day' },
-} as const
-
-function Section({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
+function Section({ title, description, children }: { title: string; description?: ReactNode; children: ReactNode }) {
   return (
-    <section className="grid gap-6 border-t border-line py-8 first:border-0 first:pt-0 lg:grid-cols-[280px_1fr]">
+    <section className="grid gap-5 border-t border-line py-8 first:border-0 first:pt-0 lg:grid-cols-[260px_1fr] lg:gap-8">
       <div>
         <h3 className="font-semibold">{title}</h3>
         {description && <p className="mt-1 text-sm text-ink-3">{description}</p>}
       </div>
-      <div className="space-y-5">{children}</div>
+      <div className="min-w-0 space-y-5">{children}</div>
     </section>
+  )
+}
+
+function ToggleRow({ checked, onChange, label, description }: { checked: boolean; onChange: (v: boolean) => void; label: string; description: string }) {
+  return (
+    <div className="flex items-start justify-between gap-4 rounded-xl border border-line p-4">
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-ink">{label}</p>
+        <p className="mt-0.5 text-xs text-ink-3">{description}</p>
+      </div>
+      <Toggle checked={checked} onChange={onChange} label={label} />
+    </div>
   )
 }
 
@@ -31,101 +35,107 @@ export function CampaignSettingsForm({
   onNameChange,
   settings,
   onChange,
+  errors = {},
 }: {
   name: string
   onNameChange: (v: string) => void
   settings: CampaignSettings
   onChange: (s: CampaignSettings) => void
+  /** Extra field errors, e.g. from the server's `details`. */
+  errors?: Record<string, string>
 }) {
   const set = <K extends keyof CampaignSettings>(k: K, v: CampaignSettings[K]) => onChange({ ...settings, [k]: v })
-  const hours = Array.from({ length: 24 }, (_, h) => h)
-  const fmtHour = (h: number) => `${((h + 11) % 12) + 1}:00 ${h < 12 ? 'am' : 'pm'}`
+  const local = settingsErrors(name, settings)
+  const err = (k: string) => local[k] ?? errors[k]
 
   return (
     <div>
       <Section title="Campaign name">
-        <Input value={name} onChange={(e) => onNameChange(e.target.value)} placeholder="e.g. Pune manufacturing heads" maxLength={80} />
+        <Field label="Name" error={err('name')}>
+          <Input value={name} onChange={(e) => onNameChange(e.target.value)} placeholder="e.g. Pune manufacturing heads" maxLength={NAME_MAX} aria-invalid={!!err('name')} />
+        </Field>
       </Section>
 
-      <Section title="Daily limits" description="Spread actions out to keep your LinkedIn account safe. Values above the recommended limit are risky.">
-        <div className="grid gap-5 sm:grid-cols-2">
-          {(Object.keys(LIMITS) as (keyof typeof LIMITS)[]).map((k) => {
+      <Section
+        title="Daily limits"
+        description="The most actions this campaign does per day. Staying under the recommended values keeps your LinkedIn account safe."
+      >
+        <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+          {(Object.keys(LIMITS) as LimitKey[]).map((k) => {
             const meta = LIMITS[k]
             const v = settings[k]
             const risky = v > meta.safe
             return (
-              <Field key={k} label={meta.label} hint={<span className={cn(risky && 'text-warn')}>{risky ? `Above the recommended ${meta.safe}` : `Recommended: up to ${meta.safe}`}</span>}>
+              <Field
+                key={k}
+                label={meta.label}
+                error={err(`settings.${k}`)}
+                hint={<span className={cn(risky && 'font-medium text-warn')}>{risky ? `Above the recommended ${meta.safe} – risky` : `Recommended: up to ${meta.safe}`}</span>}
+              >
                 <div className="flex items-center gap-3">
                   <input
                     type="range"
                     min={0}
                     max={meta.max}
-                    value={v}
+                    value={Math.min(v, meta.max)}
                     onChange={(e) => set(k, Number(e.target.value))}
-                    className="flex-1 accent-[var(--color-brand)]"
-                    aria-label={meta.label}
+                    className="min-w-0 flex-1 accent-[var(--color-brand)]"
+                    aria-label={`${meta.label} (slider)`}
                   />
                   <Input
                     type="number"
+                    inputMode="numeric"
                     min={0}
                     max={meta.max}
                     value={v}
-                    onChange={(e) => set(k, Math.max(0, Math.min(meta.max, Number(e.target.value) || 0)))}
-                    className="w-20 text-center"
+                    onChange={(e) => {
+                      const n = Math.floor(Number(e.target.value))
+                      set(k, Number.isFinite(n) ? Math.max(0, Math.min(meta.max, n)) : 0)
+                    }}
+                    className="w-20 text-center tabular-nums"
+                    aria-label={meta.label}
+                    aria-invalid={!!err(`settings.${k}`)}
                   />
                 </div>
               </Field>
             )
           })}
         </div>
+        <p className="flex items-start gap-2 text-xs text-ink-3">
+          <ShieldCheck size={14} className="mt-px shrink-0 text-ok" aria-hidden />
+          Across all campaigns your account never goes above 100 invites, 150 messages and 250 profile views a day.
+        </p>
       </Section>
 
-      <Section title="Schedule" description="Actions only run during these hours, in the lead-facing time zone you choose.">
-        <div>
-          <span className="mb-2 block text-sm font-medium text-ink-2">Working days</span>
-          <div className="flex flex-wrap gap-2">
-            {DAYS.map((d, i) => {
-              const on = settings.workingDays.includes(i)
-              return (
-                <button
-                  key={d}
-                  type="button"
-                  aria-pressed={on}
-                  onClick={() => set('workingDays', on ? settings.workingDays.filter((x) => x !== i) : [...settings.workingDays, i].sort())}
-                  className={cn(
-                    'h-10 w-14 cursor-pointer rounded-lg border text-sm font-medium transition-colors',
-                    on ? 'border-brand bg-brand-soft text-brand' : 'border-line text-ink-2 hover:border-line-strong',
-                  )}
-                >
-                  {d}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Field label="From">
-            <Select value={settings.startHour} onChange={(e) => set('startHour', Number(e.target.value))}>
-              {hours.map((h) => <option key={h} value={h} disabled={h >= settings.endHour}>{fmtHour(h)}</option>)}
-            </Select>
-          </Field>
-          <Field label="To">
-            <Select value={settings.endHour} onChange={(e) => set('endHour', Number(e.target.value))}>
-              {hours.map((h) => <option key={h} value={h} disabled={h <= settings.startHour}>{fmtHour(h)}</option>)}
-            </Select>
-          </Field>
-          <Field label="Time zone">
-            <Select value={settings.timezone} onChange={(e) => set('timezone', e.target.value)}>
-              {TIMEZONES.map((t) => <option key={t}>{t}</option>)}
-            </Select>
-          </Field>
-        </div>
+      <Section title="Schedule">
+        <p className="flex items-start gap-3 rounded-xl border border-info/30 bg-info/10 p-4 text-sm text-ink-2">
+          <Clock size={18} className="mt-px shrink-0 text-info" aria-hidden />
+          <span>
+            Active hours and the random pause between actions are set in{' '}
+            <Link to="/settings#active-hours" className="font-medium text-brand hover:underline">Settings → Active hours</Link>. They apply to all your campaigns.
+          </span>
+        </p>
       </Section>
 
       <Section title="Safety & targeting">
-        <Checkbox checked={settings.skipConnected} onChange={(v) => set('skipConnected', v)} label="Skip leads who are already 1st-degree connections" description="They won’t receive an invite step; message steps still run." />
-        <Checkbox checked={settings.skipOtherCampaigns} onChange={(v) => set('skipOtherCampaigns', v)} label="Skip leads that are in another active campaign" />
-        <Checkbox checked={settings.stopOnReply} onChange={(v) => set('stopOnReply', v)} label="Stop the sequence when a lead replies" description="On LinkedIn or by email." />
+        <ToggleRow
+          checked={settings.skipConnected}
+          onChange={(v) => set('skipConnected', v)}
+          label="Skip leads who are already your connections"
+          description="When the invite step finds an existing connection, that lead leaves the campaign. Turn off to keep sending them the next steps (e.g. messages)."
+        />
+        <ToggleRow
+          checked={settings.skipOtherCampaigns}
+          onChange={(v) => set('skipOtherCampaigns', v)}
+          label="Skip leads who are in your other campaigns"
+          description="A person who is still in another of your campaigns (running, paused or draft) is added as “Skipped”. A lead is also skipped before its first action if another running or paused campaign has already contacted them."
+        />
+        <ToggleRow
+          checked={settings.stopOnReply}
+          onChange={(v) => set('stopOnReply', v)}
+          label="Stop the sequence when a lead replies"
+          description="Once a lead replies to your campaign on LinkedIn, their sequence ends: no more steps run for them – including the Yes branch of an “If replied” condition."
+        />
       </Section>
     </div>
   )

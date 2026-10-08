@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Security Verification | LinkedIn</title></head>
+<body>
+<main class="app__content" role="main">
+  <section class="captcha-challenge">
+    <h1 class="content__header">Let’s do a quick security check</h1>
+    <p>Before you can access your account, please complete the security check below.</p>
+    <form id="captcha-challenge" method="post" action="/checkpoint/challenge/verify">
+      <input type="hidden" name="captchaUserResponseToken" value="">
+      <iframe id="captcha-internal" title="Captcha" src="about:blank" style="width: 320px; height: 300px; border: 1px solid #ccc;"></iframe>
+    </form>
+  </section>
+</main>
+</body>
+</html>

@@ -1,175 +1,220 @@
-import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Eye, MessageSquare, Mail, UserCheck, UserPlus, Reply, Megaphone } from 'lucide-react'
-import type { Activity } from '../types'
-import { useStore, toast } from '../store/useStore'
-import { Button, Card, EmptyState, Modal, ProgressRing, Select } from '../components/ui'
+import { Activity as ActivityIcon, ArrowRight, Check, Clock, Megaphone, Plus, Reply, UserCheck, UserPlus } from 'lucide-react'
+import type { Dashboard as DashboardData, LimitUsage, LinkedInStatus } from '@shared/types.ts'
+import { errorMessage } from '../api/client'
+import { useCampaigns, useDashboard } from '../api/hooks-campaigns'
+import { cn, pct } from '../lib/utils'
+import { Button, Card, EmptyState, ErrorState, ProgressRing, Skeleton } from '../components/ui'
+import { LinkedInIcon } from '../components/ui/LinkedInIcon'
 import { CampaignTable } from '../components/CampaignTable'
-import { formatDateTime, pct } from '../lib/utils'
-import { MOCK_PROFILE_VIEWS_DELTA } from '../data/mock'
+import { ActivityList } from '../components/campaign/ActivityFeed'
+import { engineStatus } from '../components/campaign/engineStatus'
 
-const ACTIVITY_TEXT: Record<Activity['type'], { text: string; icon: typeof Eye }> = {
-  invite: { text: 'Connection request was sent to', icon: UserPlus },
-  accepted: { text: 'Connection request was accepted by', icon: UserCheck },
-  message: { text: 'Message was sent to', icon: MessageSquare },
-  reply: { text: 'New reply from', icon: Reply },
-  view: { text: 'Profile was viewed:', icon: Eye },
-  email: { text: 'Email was sent to', icon: Mail },
-  follow: { text: 'Followed', icon: UserPlus },
+const CONNECT_TEXT: Record<Exclude<LinkedInStatus, 'connected'>, { title: string; body: string; action: string }> = {
+  disconnected: {
+    title: 'Connect your LinkedIn account',
+    body: 'Campaigns send invites and messages from your own LinkedIn account. Connect it to start – it takes a minute.',
+    action: 'Connect LinkedIn',
+  },
+  needs_verification: {
+    title: 'Finish connecting LinkedIn',
+    body: 'LinkedIn asked for a verification code. Enter it to finish connecting your account.',
+    action: 'Enter the code',
+  },
+  needs_app_approval: {
+    title: 'Finish connecting LinkedIn',
+    body: 'Approve the sign-in in your LinkedIn mobile app to finish connecting your account.',
+    action: 'Continue',
+  },
+  expired: {
+    title: 'Reconnect your LinkedIn account',
+    body: 'Your LinkedIn session expired, so your campaigns are on hold. Reconnect and they continue where they stopped.',
+    action: 'Reconnect LinkedIn',
+  },
+  error: {
+    title: 'Reconnect your LinkedIn account',
+    body: 'Something went wrong with your LinkedIn connection, so your campaigns are on hold.',
+    action: 'Reconnect LinkedIn',
+  },
 }
 
-function WithdrawModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const pending = useStore((s) => s.pendingInvites)
-  const withdraw = useStore((s) => s.withdrawInvites)
-  const [olderThan, setOlderThan] = useState('30')
-  // Demo estimate: older invites make up a larger share of the pending pile.
-  const estimate = Math.round(pending * ({ '14': 0.8, '30': 0.6, '60': 0.35, '90': 0.2 }[olderThan] ?? 0.5))
+function ConnectCard({ d }: { d: DashboardData }) {
+  const status = d.linkedin.status
+  if (status === 'connected') return null
+  const t = CONNECT_TEXT[status] ?? CONNECT_TEXT.error
   return (
-    <Modal open={open} onClose={onClose} className="max-w-lg">
-      <h3 className="text-xl font-semibold">Withdraw pending invitations</h3>
-      <p className="mt-2 text-sm text-ink-2">
-        LinkedIn limits how many invitations can be pending. Withdrawing old ones frees up room for new campaigns.
+    <Card className={cn('flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:p-8', status === 'disconnected' ? 'border-brand/50 bg-brand-soft/40' : 'border-warn/50 bg-warn/10')}>
+      <span className="grid size-14 shrink-0 place-items-center rounded-2xl bg-[#0a66c2] text-white" aria-hidden>
+        <LinkedInIcon size={28} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <h2 className="text-xl font-semibold">{t.title}</h2>
+        <p className="mt-1 text-sm text-ink-2">{t.body}</p>
+        {d.linkedin.lastError && status !== 'disconnected' && <p className="mt-1 text-xs text-ink-3">{d.linkedin.lastError}</p>}
+      </div>
+      <Link to="/connect" className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-lg bg-brand px-6 font-semibold text-white hover:bg-brand-strong">
+        {t.action} <ArrowRight size={18} aria-hidden />
+      </Link>
+    </Card>
+  )
+}
+
+function GetStarted({ connected }: { connected: boolean }) {
+  const steps = [
+    { done: connected, title: 'Connect your LinkedIn account', body: 'Your campaigns act through your own account.', to: '/connect', cta: 'Connect' },
+    { done: false, title: 'Check your active hours', body: 'Pick the days and hours your account may work, and the random pause between actions.', to: '/settings#active-hours', cta: 'Open settings' },
+    { done: false, title: 'Create your first campaign', body: 'Add leads, build your own sequence – invite, message, follow-up – and launch.', to: '/campaigns/new', cta: 'Create campaign' },
+  ]
+  return (
+    <Card className="p-6 sm:p-10">
+      <h2 className="text-2xl font-semibold">Get started</h2>
+      <p className="mt-1 text-sm text-ink-2">Three steps to your first automated LinkedIn campaign.</p>
+      <ol className="mt-6 grid gap-4 md:grid-cols-3">
+        {steps.map((s, i) => (
+          <li key={s.title} className={cn('flex flex-col rounded-xl border p-5', s.done ? 'border-ok/40 bg-ok/5' : 'border-line')}>
+            <span className={cn('grid size-8 place-items-center rounded-full text-sm font-semibold', s.done ? 'bg-ok/20 text-ok' : 'bg-panel-2 text-ink-2')}>
+              {s.done ? <Check size={16} aria-label="Done" /> : i + 1}
+            </span>
+            <p className="mt-3 font-semibold">{s.title}</p>
+            <p className="mt-1 flex-1 text-sm text-ink-2">{s.body}</p>
+            {!s.done && (
+              <Link to={s.to} className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-brand hover:underline">
+                {s.cta} <ArrowRight size={14} aria-hidden />
+              </Link>
+            )}
+          </li>
+        ))}
+      </ol>
+    </Card>
+  )
+}
+
+function Ring({ label, usage }: { label: string; usage: LimitUsage }) {
+  return (
+    <div className="flex min-w-0 flex-col items-center gap-2 text-center sm:gap-3">
+      <ProgressRing value={pct(usage.done, usage.limit)} size={68} />
+      <p className="text-base font-semibold tabular-nums sm:text-lg" title={usage.limit ? undefined : 'No active campaign sets a limit'}>
+        {usage.done.toLocaleString('en-US')} <span className="font-normal text-ink-2">/ {usage.limit ? usage.limit.toLocaleString('en-US') : '–'}</span>
       </p>
-      <div className="mt-6 space-y-2">
-        <label className="text-sm font-medium text-ink-2" htmlFor="older">Withdraw invitations older than</label>
-        <Select id="older" value={olderThan} onChange={(e) => setOlderThan(e.target.value)}>
-          <option value="14">2 weeks</option>
-          <option value="30">1 month</option>
-          <option value="60">2 months</option>
-          <option value="90">3 months</option>
-        </Select>
-        <p className="text-sm text-ink-3">About <span className="font-semibold text-ink">{estimate}</span> of {pending} pending invitations match.</p>
+      <p className="text-sm font-medium sm:text-base">{label}</p>
+    </div>
+  )
+}
+
+function Tile({ label, value, icon: Icon, hint }: { label: string; value: number; icon: typeof UserPlus; hint: string }) {
+  return (
+    <div className="rounded-xl border border-line p-5" title={hint}>
+      <p className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-ink-2">
+        <Icon size={16} className="shrink-0 text-ink-3" aria-hidden /> {label}
+      </p>
+      <p className="mt-3 text-4xl font-medium tabular-nums">{value.toLocaleString('en-US')}</p>
+      <p className="mt-1 text-xs text-ink-3">{hint}</p>
+    </div>
+  )
+}
+
+const TONE_DOT = { ok: 'bg-ok', warn: 'bg-warn', bad: 'bg-bad', idle: 'bg-ink-3' } as const
+
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-8" aria-busy="true" aria-label="Loading dashboard">
+      <div className="grid gap-8 2xl:grid-cols-[1fr_440px]">
+        <Skeleton className="h-96" />
+        <Skeleton className="h-96" />
       </div>
-      <div className="mt-8 flex justify-end gap-3">
-        <Button variant="outline" onClick={onClose}>Cancel</Button>
-        <Button
-          disabled={estimate === 0}
-          onClick={() => {
-            withdraw(estimate)
-            toast(`${estimate} invitations queued for withdrawal`, 'success')
-            onClose()
-          }}
-        >
-          Withdraw {estimate}
-        </Button>
-      </div>
-    </Modal>
+      <Skeleton className="h-64" />
+    </div>
   )
 }
 
 export default function Dashboard() {
   const navigate = useNavigate()
-  const { campaigns, activity, conversations, pendingInvites, account } = useStore()
-  const [withdrawOpen, setWithdrawOpen] = useState(false)
+  const dashboard = useDashboard()
+  const campaigns = useCampaigns()
 
-  const today = useMemo(() => {
-    const active = campaigns.filter((c) => c.status === 'active')
-    const limit = (k: 'dailyInvites' | 'dailyMessages' | 'dailyEmails' | 'dailyProfileViews') =>
-      active.length ? Math.max(...active.map((c) => c.settings[k])) : 0
-    const sum = (k: 'invitesSent' | 'messagesSent' | 'emailsSent' | 'profileViews') =>
-      active.reduce((a, c) => a + c.stats[k], 0)
-    return [
-      { label: 'Invites sent', done: Math.min(sum('invitesSent'), limit('dailyInvites')), limit: limit('dailyInvites') },
-      { label: 'Messages sent', done: Math.min(sum('messagesSent'), limit('dailyMessages')), limit: limit('dailyMessages') },
-      { label: 'Emails sent', done: Math.min(sum('emailsSent'), limit('dailyEmails')), limit: limit('dailyEmails') },
-      { label: 'Profile viewed', done: Math.min(sum('profileViews'), limit('dailyProfileViews')), limit: limit('dailyProfileViews') },
-    ]
-  }, [campaigns])
+  if (dashboard.isPending) return <DashboardSkeleton />
+  if (!dashboard.data) return <ErrorState title="Couldn’t load the dashboard" message={errorMessage(dashboard.error)} onRetry={() => void dashboard.refetch()} />
 
-  const unread = conversations.filter((c) => c.unread).length
+  const d = dashboard.data
+  const all = campaigns.data ?? d.campaigns
+  const activeCount = all.filter((c) => c.status === 'active').length
+  const status = engineStatus(d, activeCount)
+  const brandNew = all.length === 0 && d.activity.length === 0
 
   return (
     <div className="space-y-8">
-      <div className="grid gap-8 xl:grid-cols-[1fr_480px]">
-        <Card className="p-6 sm:p-10">
-          <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-semibold">Today’s activity</h2>
-              <p className="mt-1 text-sm text-ink-3">Progress against your daily limits across active campaigns</p>
-            </div>
-            {!account.connected && (
-              <Link to="/settings" className="text-sm font-medium text-accent">Connect LinkedIn to start sending →</Link>
-            )}
-          </div>
-          <div className="grid grid-cols-2 gap-y-8 md:grid-cols-4 md:divide-x md:divide-line">
-            {today.map((m) => (
-              <div key={m.label} className="flex flex-col items-center gap-3">
-                <ProgressRing value={pct(m.done, m.limit)} />
-                <p className="text-lg font-semibold tabular-nums">
-                  {m.done} <span className="font-normal text-ink-2">/ {m.limit}</span>
-                </p>
-                <p className="font-medium">{m.label}</p>
-              </div>
-            ))}
-          </div>
-          <div className="mt-10 grid gap-4 md:grid-cols-[1.35fr_1fr_1fr]">
-            <div className="rounded-xl border border-line p-5">
-              <p className="text-sm font-semibold uppercase tracking-wide text-ink-2">Pending invitations</p>
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                <span className="text-4xl font-medium tabular-nums">{pendingInvites}</span>
-                <Button variant="outline" onClick={() => setWithdrawOpen(true)} disabled={pendingInvites === 0}>
-                  Withdraw
-                </Button>
-              </div>
-            </div>
-            <Link to="/inbox" className="rounded-xl border border-line p-5 hover:border-line-strong">
-              <p className="text-sm font-semibold uppercase tracking-wide text-ink-2">Unread messages</p>
-              <p className="mt-4 text-4xl font-medium tabular-nums">{unread}</p>
-            </Link>
-            <div className="rounded-xl border border-line p-5">
-              <p className="text-sm font-semibold uppercase tracking-wide text-ink-2">Profile views since last week</p>
-              <p className="mt-4 text-4xl font-medium tabular-nums">+{MOCK_PROFILE_VIEWS_DELTA} %</p>
-            </div>
-          </div>
-        </Card>
+      <ConnectCard d={d} />
 
-        <Card className="flex max-h-[560px] flex-col p-6 sm:p-8">
-          <h2 className="mb-4 text-xl font-semibold">Recent activity</h2>
-          <ul className="-mr-3 flex-1 overflow-y-auto pr-3">
-            {activity.map((a) => {
-              const { text, icon: Icon } = ACTIVITY_TEXT[a.type]
-              return (
-                <li key={a.id} className="flex gap-4 border-b border-line py-5 last:border-0">
-                  <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-lg border border-line-strong text-ink-2">
-                    <Icon size={18} />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-[15px] leading-snug">
-                      {text} <span className="text-brand">{a.leadName}</span>
-                    </p>
-                    <p className="mt-1.5 text-sm text-ink-2">
-                      {formatDateTime(a.at)} •{' '}
-                      <Link to={`/campaigns/${a.campaignId}`} className="text-brand hover:underline">{a.campaignName}</Link>
-                    </p>
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
-        </Card>
-      </div>
+      {brandNew ? (
+        <GetStarted connected={d.linkedin.status === 'connected'} />
+      ) : (
+        <div className="grid gap-8 2xl:grid-cols-[1fr_440px]">
+          <Card className="p-6 sm:p-10">
+            <div className="mb-8 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-semibold">Today’s activity</h2>
+                <p className="mt-1 text-sm text-ink-3">Done today against the daily limits of your active campaigns</p>
+              </div>
+              <p className="flex items-center gap-2 rounded-full border border-line px-3 py-1.5 text-sm" role="status">
+                <span className={cn('size-2.5 shrink-0 rounded-full', TONE_DOT[status.tone], status.tone === 'ok' && 'animate-pulse')} aria-hidden />
+                {status.text}
+              </p>
+            </div>
+            <div className="grid grid-cols-3 gap-2 sm:divide-x sm:divide-line">
+              <Ring label="Invites sent" usage={d.today.invites} />
+              <Ring label="Messages sent" usage={d.today.messages} />
+              <Ring label="Profile views" usage={d.today.profileViews} />
+            </div>
+            <div className="mt-10 grid gap-4 md:grid-cols-3">
+              <Tile label="Pending invites" value={d.pendingInvites} icon={UserPlus} hint="Invites sent but not accepted yet" />
+              <Tile label="Accepted" value={d.accepted} icon={UserCheck} hint="Invites accepted, all campaigns" />
+              <Tile label="Replies" value={d.replies} icon={Reply} hint="Leads who replied on LinkedIn" />
+            </div>
+            <p className="mt-6 flex items-start gap-2 text-xs text-ink-3">
+              <Clock size={14} className="mt-px shrink-0" aria-hidden />
+              <span>
+                Actions run inside your <Link to="/settings#active-hours" className="text-brand hover:underline">active hours</Link>, with a random pause between each
+                one.
+              </span>
+            </p>
+          </Card>
+
+          <Card className="flex max-h-[640px] flex-col p-6 sm:p-8">
+            <h2 className="mb-2 text-xl font-semibold">Recent activity</h2>
+            {d.activity.length ? (
+              <div className="-mr-3 min-h-0 flex-1 overflow-y-auto pr-3">
+                <ActivityList items={d.activity} />
+              </div>
+            ) : (
+              <div className="flex flex-1 flex-col items-center justify-center py-10 text-center">
+                <span className="grid size-14 place-items-center rounded-2xl bg-panel-2 text-brand" aria-hidden><ActivityIcon size={26} /></span>
+                <p className="mt-4 font-medium">No activity yet</p>
+                <p className="mt-1 max-w-xs text-sm text-ink-2">Invites, messages and replies show up here as your campaigns run.</p>
+              </div>
+            )}
+          </Card>
+        </div>
+      )}
 
       <Card className="p-6 sm:p-10">
-        <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
           <h2 className="text-2xl font-semibold">Recent campaigns</h2>
-          <div className="flex gap-3">
-            <Button variant="outline" size="lg" onClick={() => navigate('/campaigns')}>All campaigns</Button>
-            <Button size="lg" onClick={() => navigate('/campaigns/new')}>New campaign</Button>
+          <div className="flex flex-wrap gap-3">
+            {d.campaigns.length > 0 && <Button variant="outline" onClick={() => navigate('/campaigns')}>All campaigns</Button>}
+            <Button onClick={() => navigate('/campaigns/new')}><Plus size={16} /> New campaign</Button>
           </div>
         </div>
-        {campaigns.length ? (
-          <CampaignTable campaigns={campaigns.slice(0, 5)} />
+        {d.campaigns.length ? (
+          <CampaignTable campaigns={d.campaigns} />
         ) : (
           <EmptyState
             icon={<Megaphone size={36} />}
             title="No campaigns yet"
-            body="Create your first campaign: add leads, build a sequence, and let it run on autopilot."
-            action={<Button size="lg" onClick={() => navigate('/campaigns/new')}>Create campaign</Button>}
+            body="Create your first campaign: add leads, build your own sequence and let it run inside your active hours."
+            action={<Button size="lg" onClick={() => navigate('/campaigns/new')}><Plus size={18} /> Create your first campaign</Button>}
           />
         )}
       </Card>
-
-      <WithdrawModal open={withdrawOpen} onClose={() => setWithdrawOpen(false)} />
     </div>
   )
 }
