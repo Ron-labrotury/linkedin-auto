@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Security Verification | LinkedIn</title>
+<style>.hidden__imp { display: none !important; }</style></head>
+<body>
+<main class="app__content" role="main">
+  <section class="two-step-challenge">
+    <div class="content__header">
+      <h1 class="content__header">Let’s do a quick verification</h1>
+      <p class="form__subtitle">The verification code has been sent to s***@example.com</p>
+    </div>
+    <form id="email-pin-challenge" class="pin-verification-form" method="post" action="/checkpoint/challenge/verify">
+      <input type="hidden" name="csrfToken" value="ajax:5555">
+      <input type="hidden" name="challengeId" value="AQH-123">
+      <div class="body__banner--error {{ERROR_CLASS}}" role="alert"><span class="body__banner-content">{{ERROR}}</span></div>
+      <div class="form__input--floating">
+        <input id="input__email_verification_pin" name="pin" class="input_verification_pin" type="text" maxlength="6" aria-label="Please enter the code here" required>
+        <label for="input__email_verification_pin" class="form__label--floating">Enter code</label>
+      </div>
+      <button id="email-pin-submit-button" class="form__submit" type="submit">Submit</button>
+    </form>
+    <p>Didn’t receive the code? <a href="#resend">Resend code</a></p>
+  </section>
+</main>
+</body>
+</html>

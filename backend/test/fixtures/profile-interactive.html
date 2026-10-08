@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="{{LANG}}">
+<head>
+<meta charset="utf-8">
+<title>Jane Doe | LinkedIn</title>
+<style>
+  .visually-hidden { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(1px, 1px, 1px, 1px); }
+  .artdeco-dropdown__content { display: none; }
+  .artdeco-dropdown__content--is-open { display: block; }
+  .artdeco-modal { position: fixed; top: 80px; left: 300px; width: 560px; background: #fff; border: 1px solid #ccc; padding: 16px; }
+</style>
+</head>
+<body>
+<!--
+  A scripted LinkedIn profile for driver tests. {{CONFIG}} is replaced with a JSON object:
+  id, name, degree, state (not_connected | pending | connected), layout (connect | follow-primary),
+  lazyMenu, mode (normal | upsell | limit | email | direct), following, thread [{from, text, failed}],
+  replyOnSend, about (extra About text, also as a heading), chat ({name, id, on: load | connect | type,
+  draft}: another person's chat window that pops up), historyDelayMs / historyLoader (the message
+  history arrives late, with or without a loader), sendFails (the sent message is flagged "Failed to
+  send"), confirm: false (delivered, but the window never shows it), markers: false (no "--other"
+  class and no sender links). {{LANG}} is the page's lang. Everything the page does is logged in
+  window.__log.
+-->
+<header id="global-nav" class="global-nav">
+  <button class="global-nav__me" data-test-global-nav-me type="button"><img class="global-nav__me-photo" alt="Sam Sender" src="https://media.licdn.com/dms/image/v2/x/profile-displayphoto-shrink_100_100/0/1"></button>
+</header>
+<div class="application-outlet">
+  <main id="main" class="scaffold-layout__main">
+    <section class="artdeco-card" id="topcard"></section>
+    <section class="artdeco-card" id="about"><h2>About</h2><p>Growth leader.</p></section>
+  </main>
+  <aside class="scaffold-layout__aside">
+    <section><h2>People also viewed</h2>
+      <a href="https://www.linkedin.com/in/bob-smith-77/">Bob Smith</a>
+      <button aria-label="Invite Bob Smith to connect" type="button" onclick="window.__log.push({ type: 'wrong-click' })"><span>Connect</span></button>
+      <button aria-label="Follow Bob Smith" type="button" onclick="window.__log.push({ type: 'wrong-click' })"><span>Follow</span></button>
+    </section>
+  </aside>
+</div>
+<div id="artdeco-modal-outlet"></div>
+<div class="artdeco-toasts"><ul class="artdeco-toasts_toasts" id="toasts"></ul></div>
+<div id="interop-outlet"></div>
+<script>
+  const C = Object.assign(
+    {
+      name: 'Jane Doe',
+      degree: '2nd',
+      state: 'not_connected',
+      layout: 'connect',
+      lazyMenu: false,
+      mode: 'normal',
+      following: false,
+      thread: [],
+      replyOnSend: false,
+      about: '',
+      chat: null,
+      historyDelayMs: 0,
+      historyLoader: true,
+      sendFails: false,
+      confirm: true,
+      markers: true,
+    },
+    {{CONFIG}},
+  )
+  const first = C.name.split(' ')[0]
+  const log = (window.__log = [])
+  let state = C.state
+  let following = C.following
+  let menuOpen = false
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+  const item = (label, text, act) =>
+    `<li><div aria-label="${esc(label)}" role="button" tabindex="0" data-act="${act}" class="artdeco-dropdown__item artdeco-dropdown__item--is-dropdown"><span aria-hidden="true">${esc(text)}</span></div></li>`
+  const btn = (label, text, act, primary) =>
+    `<button aria-label="${esc(label)}" data-act="${act}" class="artdeco-button artdeco-button--2 ${primary ? 'artdeco-button--primary' : 'artdeco-button--secondary'}" type="button"><span class="artdeco-button__text">${esc(text)}</span></button>`
+  const messageLink = (primary) =>
+    `<a data-act="message" href="https://www.linkedin.com/messaging/compose/?profileUrn=urn%3Ali%3Afsd_profile%3AACoAAAa1&recipient=ACoAAAa1&screenContext=NON_SELF_PROFILE_VIEW&interop=msgOverlay" class="artdeco-button artdeco-button--2 ${primary ? 'artdeco-button--primary' : 'artdeco-button--secondary'}"><span class="artdeco-button__text">Message</span></a>`
+
+  function render() {
+    const connected = state === 'connected'
+    const menu = [item('Send profile in a message', 'Send profile in a message', 'noop'), item('Save to PDF', 'Save to PDF', 'noop')]
+    const followItem = following ? item(`Unfollow ${C.name}`, 'Unfollow', 'noop') : item(`Follow ${C.name}`, 'Follow', 'follow')
+    const inviteItem =
+      state === 'pending' ? item(`Pending, click to withdraw invitation sent to ${C.name}`, 'Pending', 'pending') : item(`Invite ${C.name} to connect`, 'Connect', 'connect')
+    let actions
+    if (connected) {
+      actions = messageLink(true)
+      menu.push(followItem, item(`Remove your connection to ${C.name}`, 'Remove Connection', 'noop'))
+    } else if (C.layout === 'follow-primary') {
+      actions = (following ? btn(`Following, click to unfollow ${C.name}`, 'Following', 'noop', true) : btn(`Follow ${C.name}`, 'Follow', 'follow', true)) + messageLink(false)
+      menu.push(inviteItem)
+    } else {
+      actions =
+        (state === 'pending'
+          ? btn(`Pending, click to withdraw invitation sent to ${C.name}`, 'Pending', 'pending', true)
+          : btn(`Invite ${C.name} to connect`, 'Connect', 'connect', true)) + messageLink(false)
+      menu.push(followItem)
+    }
+    const degree = connected ? '1st' : C.degree
+    document.getElementById('topcard').innerHTML = `
+      <div class="ph5 pb5"><div class="mt2 relative">
+        <div class="pv-text-details__left-panel">
+          <a href="/in/jane-doe-1a2b3c/overlay/about-this-profile/"><h1 class="inline t-24 v-align-middle break-words">${esc(C.name)}</h1></a>
+          <span class="distance-badge separator"><span class="visually-hidden">${degree} degree connection</span><span class="dist-value" aria-hidden="true">${degree}</span></span>
+        </div>
+        <div class="text-body-medium break-words">Head of Growth at Acme Corp</div>
+        <div class="mt2"><span class="text-body-small inline t-black--light break-words">Austin, Texas, United States</span>
+          <span class="pv-text-details__separator"> · <a href="/in/jane-doe-1a2b3c/overlay/contact-info/" id="top-card-text-details-contact-info">Contact info</a></span></div>
+      </div>
+      <div class="pvs-profile-actions">${actions}
+        <div class="artdeco-dropdown">
+          <button aria-expanded="${menuOpen}" aria-label="More actions" data-act="more" class="artdeco-dropdown__trigger artdeco-button artdeco-button--secondary artdeco-button--muted" type="button"><span aria-hidden="true">More</span></button>
+          <div class="artdeco-dropdown__content ${menuOpen ? 'artdeco-dropdown__content--is-open' : ''}" aria-hidden="${!menuOpen}">
+            <div class="artdeco-dropdown__content-inner">${!C.lazyMenu || menuOpen ? `<ul>${menu.join('')}</ul>` : ''}</div>
+          </div>
+        </div>
+      </div></div>`
+  }
+
+  const MODALS = {
+    choose: {
+      title: 'Add a note to your invitation?',
+      body: `Personalize your invitation to ${C.name} by adding a note. LinkedIn members are more likely to accept invitations that include a note.`,
+      buttons: [['Add a note', 'Add a note', 'add-note'], ['Send without a note', 'Send without a note', 'send-without']],
+    },
+    note: { title: 'Add a note to your invitation', textarea: true, buttons: [['Cancel adding a note', 'Cancel', 'dismiss'], ['Send invitation', 'Send', 'send-note']] },
+    upsell: {
+      title: 'Personalize your invitations with Premium',
+      body: 'You’ve used all your free personalized invitations for this month. Get unlimited personalized invitations with Premium.',
+      buttons: [['Try Premium for ₹0', 'Try Premium for ₹0', 'noop']],
+    },
+    limit: { title: 'You’ve reached the weekly invitation limit', body: 'You can send more invitations next week.', buttons: [['Got it', 'Got it', 'dismiss']] },
+    email: {
+      title: 'Add a note to your invitation?',
+      body: 'To verify this member knows you, please enter their email to connect. You can also add a personal note.',
+      email: true,
+      buttons: [['Send', 'Send', 'noop']],
+    },
+    withdraw: {
+      title: 'Withdraw invitation',
+      body: `If you withdraw now, you won’t be able to resend to ${first} for up to 3 weeks.`,
+      buttons: [['Cancel', 'Cancel', 'dismiss'], ['Withdraw', 'Withdraw', 'withdraw']],
+    },
+    inmail: { title: `Message ${first} with InMail`, body: 'Reach out to anyone on LinkedIn with Premium.', buttons: [['Try Premium', 'Try Premium for ₹0', 'noop']] },
+  }
+
+  function modal(kind) {
+    const m = MODALS[kind]
+    document.getElementById('artdeco-modal-outlet').innerHTML = `
+      <div class="artdeco-modal-overlay artdeco-modal-overlay--is-top-layer">
+        <div role="dialog" aria-labelledby="send-invite-modal" class="artdeco-modal artdeco-modal--layer-default send-invite" size="medium">
+          <button aria-label="Dismiss" data-act="dismiss" class="artdeco-modal__dismiss artdeco-button artdeco-button--circle" type="button">×</button>
+          <div class="artdeco-modal__header"><h2 id="send-invite-modal">${esc(m.title)}</h2></div>
+          <div class="artdeco-modal__content">
+            ${m.body ? `<p>${esc(m.body)}</p>` : ''}
+            ${m.textarea ? `<textarea name="message" id="custom-message" maxlength="${C.noteMax ?? 200}" class="ember-text-area send-invite__custom-message" placeholder="Ex: We know each other from…"></textarea>` : ''}
+            ${m.email ? `<input type="email" name="email" id="email" aria-label="Email">` : ''}
+          </div>
+          <div class="artdeco-modal__actionbar">${m.buttons
+            .map(([label, text, act]) => `<button aria-label="${esc(label)}" data-act="${act}" class="artdeco-button" type="button" ${act === 'send-note' ? 'disabled' : ''}><span>${esc(text)}</span></button>`)
+            .join('')}</div>
+        </div>
+      </div>`
+  }
+  const closeModal = () => (document.getElementById('artdeco-modal-outlet').innerHTML = '')
+  // Tell the fake site, so the next page load shows the new state (like LinkedIn's backend).
+  const save = () =>
+    fetch('/__fake/state', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: C.id, state, following, thread: C.thread }) }).catch(() => {})
+  function toast(text) {
+    document.getElementById('toasts').innerHTML = `<li><div class="artdeco-toast-item artdeco-toast-item--visible" role="alert" data-test-artdeco-toast-item-type="success"><p class="artdeco-toast-item__message">${esc(text)}</p></div></li>`
+  }
+  function sent(note) {
+    log.push({ type: 'invite', note })
+    state = 'pending'
+    closeModal()
+    render()
+    toast(`Your invitation to ${C.name} was sent.`)
+    save()
+  }
+
+  const itemFor = (name, id) => (m) => {
+    const them = m.from === 'them'
+    const marker = them && C.markers !== false ? ' msg-s-event-listitem--other' : ''
+    const link = C.markers === false ? '' : `<a class="msg-s-event-listitem__link" href="https://www.linkedin.com/in/${them ? encodeURIComponent(id) : 'sam-sender'}/"></a>`
+    const failed = m.failed ? ' msg-s-event-listitem--error' : ''
+    const status = m.failed ? '<div class="msg-s-event-listitem__error"><span role="alert">Failed to send</span> <button type="button" aria-label="Retry sending message">Retry</button></div>' : ''
+    return `
+    <li class="msg-s-message-list__event clearfix">
+      <div class="msg-s-event-listitem${marker}${failed}">${link}
+        <div class="msg-s-message-group__meta"><span class="msg-s-message-group__name t-14 t-black t-bold">${them ? esc(name) : 'Sam Sender'}</span></div>
+        <div class="msg-s-event-listitem__message-bubble"><p class="msg-s-event-listitem__body t-14 t-black--light t-normal">${esc(m.text)}</p></div>${status}
+      </div>
+    </li>`
+  }
+  const messageItem = itemFor(C.name, C.id)
+
+  // LinkedIn renders messaging windows side by side inside the #interop-outlet shadow root.
+  function overlay() {
+    const host = document.getElementById('interop-outlet')
+    const root = host.shadowRoot || host.attachShadow({ mode: 'open' })
+    if (!root.querySelector('.msg-overlay-container')) {
+      root.innerHTML = '<aside class="msg-overlay-container" style="position: fixed; right: 10px; bottom: 0; display: flex; align-items: flex-end; gap: 8px;"></aside>'
+    }
+    return root.querySelector('.msg-overlay-container')
+  }
+
+  function bubble({ name, id, items, draft, onSend, onClose }) {
+    const el = document.createElement('div')
+    el.className = 'msg-overlay-conversation-bubble'
+    el.setAttribute('role', 'dialog')
+    el.setAttribute('aria-label', `Messaging conversation with ${name}`)
+    el.style.cssText = 'width: 400px; height: 440px; display: flex; flex-direction: column; background: #fff;'
+    el.innerHTML = `
+      <header class="msg-overlay-bubble-header"><h2 class="msg-overlay-bubble-header__title"><a class="profile-card-one-to-one__profile-link" href="https://www.linkedin.com/in/${encodeURIComponent(id)}/"><span>${esc(name)}</span></a></h2>
+        <button class="msg-overlay-bubble-header__control" type="button" data-close><span class="artdeco-button__text">Close your conversation with ${esc(name)}</span></button></header>
+      <div class="msg-s-message-list-container" style="flex: 1; overflow: auto;"><ul class="msg-s-message-list-content">${items}</ul></div>
+      <form class="msg-form">
+        <div class="msg-form__contenteditable" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Write a message…" style="min-height: 70px; border: 1px solid #ddd;"><p>${draft ? esc(draft) : '<br>'}</p></div>
+        <button class="msg-form__send-button artdeco-button artdeco-button--1" type="submit" ${draft ? '' : 'disabled'}>Send</button>
+      </form>`
+    const editor = el.querySelector('.msg-form__contenteditable')
+    const send = el.querySelector('.msg-form__send-button')
+    editor.addEventListener('input', () => (send.disabled = !editor.innerText.trim()))
+    el.querySelector('[data-close]').addEventListener('click', () => {
+      onClose()
+      el.remove()
+    })
+    el.querySelector('form').addEventListener('submit', (e) => {
+      e.preventDefault()
+      onSend(editor, send, el)
+    })
+    return el
+  }
+
+  /** Another person's chat window pops up (placed before the lead's, same size). */
+  function openChat() {
+    const aside = overlay()
+    if (!C.chat || aside.querySelector('[data-chat]')) return
+    const chat = C.chat
+    const id = chat.id || 'bob-smith-77'
+    const el = bubble({
+      name: chat.name,
+      id,
+      items: itemFor(chat.name, id)({ from: 'them', text: `Hi Sam, it's ${chat.name}!` }),
+      draft: chat.draft,
+      onClose: () => log.push({ type: 'chat-close' }),
+      onSend: (editor, send) => {
+        log.push({ type: 'chat-message', to: chat.name, text: editor.innerText.trim() })
+        editor.innerHTML = '<p><br></p>'
+        send.disabled = true
+      },
+    })
+    el.setAttribute('data-chat', '')
+    aside.insertBefore(el, aside.firstChild)
+  }
+
+  function openOverlay() {
+    const aside = overlay()
+    aside.querySelector('[data-lead]')?.remove()
+    const late = C.historyDelayMs > 0
+    const el = bubble({
+      name: C.name,
+      id: C.id,
+      items: late ? (C.historyLoader !== false ? '<li><div class="artdeco-loader" style="height: 20px">Loading…</div></li>' : '') : C.thread.map(messageItem).join(''),
+      onClose: () => log.push({ type: 'close' }),
+      onSend: (editor, send, bubbleEl) => {
+        const text = editor.innerText.trim()
+        log.push({ type: 'message', text })
+        if (C.confirm === false) {
+          // Delivered, but this window never shows it.
+          C.thread.push({ from: 'me', text })
+          save()
+          return
+        }
+        C.thread.push(C.sendFails ? { from: 'me', text, failed: true } : { from: 'me', text })
+        if (C.replyOnSend && !C.sendFails) C.thread.push({ from: 'them', text: 'Thanks!' })
+        bubbleEl.querySelector('.msg-s-message-list-content').innerHTML = C.thread.map(messageItem).join('')
+        editor.innerHTML = '<p><br></p>'
+        send.disabled = true
+        save()
+      },
+    })
+    el.setAttribute('data-lead', '')
+    aside.appendChild(el)
+    if (late) setTimeout(() => (el.querySelector('.msg-s-message-list-content').innerHTML = C.thread.map(messageItem).join('')), C.historyDelayMs)
+    if (C.chat && C.chat.on === 'type') el.querySelector('.msg-form__contenteditable').addEventListener('input', openChat, { once: true })
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && menuOpen) {
+      menuOpen = false
+      render()
+    }
+  })
+  document.addEventListener('input', (e) => {
+    if (e.target.id === 'custom-message') document.querySelector('[data-act="send-note"]').disabled = !e.target.value.trim()
+  })
+  document.addEventListener('click', (e) => {
+    const el = e.target.closest('[data-act]')
+    if (!el) return
+    e.preventDefault()
+    const act = el.dataset.act
+    log.push({ type: 'click', act })
+    if (act === 'more') {
+      menuOpen = !menuOpen
+      render()
+    } else if (act === 'connect') {
+      menuOpen = false
+      render()
+      if (C.chat && C.chat.on === 'connect') openChat()
+      if (C.mode === 'direct') sent(null)
+      else modal(C.mode === 'limit' ? 'limit' : C.mode === 'email' ? 'email' : 'choose')
+    } else if (act === 'add-note') modal(C.mode === 'upsell' ? 'upsell' : 'note')
+    else if (act === 'send-without') sent(null)
+    else if (act === 'send-note') sent(document.getElementById('custom-message').value)
+    else if (act === 'dismiss') closeModal()
+    else if (act === 'pending') {
+      menuOpen = false
+      render()
+      modal('withdraw')
+    } else if (act === 'withdraw') {
+      state = 'not_connected'
+      closeModal()
+      render()
+      toast('Invitation withdrawn')
+      log.push({ type: 'withdraw' })
+      save()
+    } else if (act === 'follow') {
+      following = true
+      menuOpen = false
+      render()
+      log.push({ type: 'follow' })
+      save()
+    } else if (act === 'message') {
+      if (state === 'connected') setTimeout(openOverlay, 150)
+      else modal('inmail')
+    }
+  })
+  if (C.about) document.getElementById('about').innerHTML = `<h2>About</h2><h3>${esc(C.about)}</h3><p>${esc(C.about)}</p>`
+  render()
+  if (C.chat && C.chat.on === 'load') openChat()
+</script>
+</body>
+</html>
