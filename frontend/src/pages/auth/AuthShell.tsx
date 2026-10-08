@@ -1,7 +1,20 @@
 import { useState, type ReactNode } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Eye, EyeOff } from 'lucide-react'
+import { api, ApiError } from '../../api/client'
 import { Logo } from '../../components/layout/Logo'
-import { Input } from '../../components/ui'
+import { Alert, Input } from '../../components/ui'
+
+/** Explains a misconfigured deployment (no backend at VITE_API_URL) before anyone types a password. */
+function ApiUnreachable() {
+  const health = useQuery({ queryKey: ['health'], queryFn: api.health, retry: 1, staleTime: 60_000 })
+  if (!(health.error instanceof ApiError) || health.error.status !== 0) return null
+  return (
+    <Alert tone="bad" title="Can’t reach the LinkPilot server" className="mb-5">
+      {health.error.message}
+    </Alert>
+  )
+}
 
 /** Centered card used by the sign-in and sign-up pages. */
 export function AuthShell({ title, subtitle, children, footer }: { title: ReactNode; subtitle?: ReactNode; children: ReactNode; footer?: ReactNode }) {
@@ -15,6 +28,7 @@ export function AuthShell({ title, subtitle, children, footer }: { title: ReactN
       <div className="relative w-full max-w-md">
         <Logo to={null} className="mb-8 justify-center" />
         <main className="rounded-2xl border border-line/60 bg-panel p-6 shadow-2xl shadow-black/20 sm:p-8">
+          <ApiUnreachable />
           <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
           {subtitle && <div className="mt-2 text-sm text-ink-2">{subtitle}</div>}
           <div className="mt-7">{children}</div>

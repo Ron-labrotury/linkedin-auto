@@ -8,12 +8,12 @@ const root = fileURLToPath(new URL('.', import.meta.url))
 
 export default defineConfig(({ command, mode }) => {
   // On Vercel the frontend is a static site and the API runs elsewhere (e.g. Render). Without
-  // VITE_API_URL every API call would go to the static site itself and get index.html back, so
-  // fail the build (Vercel then keeps the previous deployment live) instead of shipping that.
+  // VITE_API_URL every API call goes to the static site itself; the build still succeeds (so
+  // previews keep deploying) and the sign-in page explains what to set.
   if (command === 'build' && process.env.VERCEL && !loadEnv(mode, root, 'VITE_').VITE_API_URL?.trim()) {
-    throw new Error(
-      'VITE_API_URL is not set. On Vercel the frontend needs the URL of your backend API, e.g. https://linkedin-auto.onrender.com – ' +
-        'add VITE_API_URL in the Vercel project (Settings → Environment Variables) and redeploy.',
+    console.warn(
+      '\n⚠ VITE_API_URL is not set. On Vercel the frontend needs the URL of your backend API, e.g. https://linkedin-auto.onrender.com – ' +
+        'add VITE_API_URL in the Vercel project (Settings → Environment Variables) and redeploy.\n',
     )
   }
   return {

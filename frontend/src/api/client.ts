@@ -91,6 +91,8 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   const isJson = /\bjson\b/i.test(res.headers.get('content-type') ?? '')
   const data = isJson ? ((await res.json().catch(() => undefined)) as unknown) : undefined
   if (data === undefined && (res.ok || res.status === 404 || res.status === 405)) throw new ApiError(0, apiUnreachableMessage(apiBase()))
+  // A non-JSON 5xx comes from a proxy/gateway in front of a backend that is down.
+  if (data === undefined && res.status >= 500) throw new ApiError(0, `Can’t reach the LinkPilot server (HTTP ${res.status}). Check that the backend is running.`)
   if (!res.ok) {
     const err = (data ?? {}) as Partial<ApiErrorBody>
     if (res.status === 401 && token) {
