@@ -1,0 +1,16 @@
+# Render Blueprint: New → Blueprint → pick this repo. Creates one Docker web service with a disk.
+services:
+  - type: web
+    name: linkedin-auto
+    runtime: docker
+    plan: standard           # Chromium needs ~1 GB+; a persistent disk needs a paid plan
+    healthCheckPath: /api/health
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: APP_SECRET
+        generateValue: true
+      - key: CORS_ORIGIN
+        value: "*"

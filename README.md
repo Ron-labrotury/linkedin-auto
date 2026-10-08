@@ -1,69 +1,92 @@
-# linkedin-auto
+# linkedin-auto (LinkPilot)
 
-LinkedIn outreach automation (Dripify-style): build campaigns from lead lists, design a
-multi-step sequence (n8n-style canvas with Yes/No branches), and track results.
+LinkedIn outreach automation, Dripify-style. Users connect their own LinkedIn account, build their own
+sequence (invite → if accepted → message → if no reply → follow-up …), add leads and launch campaigns.
+A server-side engine runs every step in a real headless browser, inside the user's **active hours**,
+with a **random pause (default 1–5 minutes)** between actions and per-campaign daily limits.
 
-**Status:** frontend/UI only, running on sample data stored in the browser. The backend comes next.
-
-## Run the frontend
-
-```bash
-cd frontend
-npm install
-npm run dev        # http://localhost:5173
-npm run build      # typecheck + production build
+```
+frontend/   React + Vite + Tailwind UI (deployable on Vercel)
+backend/    Node 22 API + automation engine + Playwright LinkedIn driver + SQLite
+shared/     Types and logic used by both (sequence model, active-hours math, URL parsing)
+docs/       API.md (HTTP API) and ENGINE.md (how the scheduler behaves)
 ```
 
-Requires Node 20.19+.
+## Run it locally
 
-## Deploy to Vercel
+Requires **Node 22.18+** (the backend runs TypeScript directly and uses the built-in `node:sqlite`).
 
-The repo is ready for Vercel as is: `vercel.json` at the root builds `frontend/` and serves
-`frontend/dist`.
+```bash
+# 1. backend (http://localhost:8787)
+cd backend
+npm install
+npx playwright install chromium     # once, for the real LinkedIn driver
+npm run dev                          # real LinkedIn
+# or: npm run dev:simulated          # fake LinkedIn – try every flow without touching your account
 
-1. On vercel.com: **Add New → Project**, then import `Ron-labrotury/linkedin-auto`.
-2. Leave **Root Directory** as the repo root and the framework preset as detected. The settings in
-   `vercel.json` (install, build, output) take priority over the dashboard.
-3. Click **Deploy**. Pushes to `main` deploy to production, and other branches get preview URLs.
+# 2. frontend (http://localhost:5173, proxies /api to the backend)
+cd ../frontend
+npm install
+npm run dev
+```
 
-Every path is rewritten to `index.html`, so deep links like `/campaigns/123` work on refresh.
-If you'd rather set **Root Directory** to `frontend`, that works too: `frontend/vercel.json`
-carries the same rewrite.
+Open http://localhost:5173, create an account, and you land on **Connect your LinkedIn account**.
 
-No environment variables are needed yet.
+### Connecting LinkedIn
+- **Email & password** – the server signs in once in a headless browser. If LinkedIn asks for a code
+  (email/SMS/authenticator) or an approval in the LinkedIn app, the UI asks for it. The password is
+  never stored; only the encrypted browser session is.
+- **Session cookie** – paste the `li_at` cookie from a browser where you're logged in
+  (linkedin.com → DevTools → Application → Cookies → `li_at`). Use this if LinkedIn shows a captcha.
+- **Settings → Test connection** checks the stored session at any time.
 
-## What's in the UI
+### Simulated mode (`LINKEDIN_DRIVER=simulated`)
+Any email connects (`…+code@…` asks for code `123456`, `…+app@…` simulates app approval). Profile URLs
+containing `accepter`, `replier`, `connected`, `notfound`, `ratelimit` or `flaky` force those outcomes,
+and `SIM_ACCEPT_AFTER_MS` / `SIM_REPLY_AFTER_MS` control how fast people "accept" and "reply".
 
-| Page | Route | Highlights |
-|---|---|---|
-| Dashboard | `/` | Daily-limit rings, pending invitations + withdraw, unread messages, activity feed, recent campaigns |
-| Campaigns | `/campaigns` | Search, "active only", start/pause toggle, delete |
-| New campaign | `/campaigns/new` | 3 tabs: **Add Leads** → **Create a Sequence** → **Settings** → Launch / Save draft |
-| Campaign detail | `/campaigns/:id` | Funnel stats, leads table, editable sequence, settings |
-| Inbox | `/inbox` | Conversations + chat |
-| Leads | `/leads` | Filters, bulk delete, CSV export, import |
-| Teams | `/teams` | Invite / remove members |
-| Settings | `/settings` | LinkedIn account, mailbox, safety, reset demo data |
+### Tests
+```bash
+cd backend && npm run typecheck && npm test
+cd frontend && npx tsc --noEmit && npm test
+```
 
-**Add-leads wizard (4 steps):** source (LinkedIn search URL, Sales Navigator URL, pasted profile
-URLs, CSV upload, existing list) → input with validation → list name → review.
-Search/Sales Navigator imports generate sample leads until the backend scraper exists.
+## How campaigns run
+- Steps: view profile, follow, like latest post, send invite (optional 300-char note), send message,
+  withdraw invite, and conditions **If invite accepted / If connected / If replied** with a
+  "keep checking for up to …" window (Yes / No branches). Messages support `{{first_name}}`,
+  `{{last_name}}`, `{{company}}`, `{{title}}`, `{{location}}`.
+- Every step has its own random wait ("between 1 and 5 minutes", hours or days), picked per lead.
+- Across all campaigns of a user, LinkedIn actions run one at a time, only inside the active hours set
+  in **Settings → Active hours**, with a random pause (min–max minutes) after each action.
+- Daily limits per campaign plus account-wide caps (100 invites, 150 messages, 250 profile views a day).
+- "Stop on reply" ends a lead's sequence once they reply; leads already connected skip the invite.
+- Everything is stored in SQLite (`DATA_DIR/app.db`), so a restart resumes where it left off.
 
-**Sequence builder** (`frontend/src/components/sequence/`): React Flow canvas with an auto tree
-layout. Add steps from any `+`, insert between steps on an edge, click a step to edit it in the
-side panel (delay, invite note with 300-char limit, message/email with `{{first_name}}`-style
-variables and a live preview, condition type + wait window). Has templates, undo, zoom, fit and
-full screen. Steps: view profile, follow, endorse, like post, invite, message, withdraw invite,
-find email, send email, condition (invite accepted / connected / replied / has email / opened
-email), end.
+> Automating LinkedIn is against LinkedIn's User Agreement and can get an account restricted.
+> Keep limits conservative and keep the random pauses.
 
-## Notes for the backend
+## Deploy
 
-- **Data model:** `frontend/src/types.ts`. A sequence is a tree stored flat:
-  `{ rootId, steps: Record<id, { kind, delay, config, next | yes/no }> }`. The worker can walk it
-  per lead: wait `delay`, run `kind`, then follow `next`, or for a condition, `yes`/`no` once it
-  resolves or `withinDays` runs out.
-- **API surface:** every mutation lives in `frontend/src/store/useStore.ts` (`createCampaign`,
-  `toggleCampaign`, `addLeads`, `sendMessage`, …). Replace those bodies with API calls.
-- **Validation** to repeat on the server: `validateSequence` in `frontend/src/lib/sequence.ts` and
-  the daily limits in `components/campaign/CampaignSettingsForm.tsx`.
+The backend runs a real browser and a long-running scheduler, so it **cannot run on Vercel**.
+Host it on any Docker platform with a persistent disk; the frontend can stay on Vercel or be served
+by the backend.
+
+### Everything in one container (simplest)
+`Dockerfile` builds the frontend and serves it from the backend, with Chromium included.
+- **Render:** New → Blueprint → this repo (`render.yaml` creates the service, a 1 GB disk at `/data`
+  and a random `APP_SECRET`).
+- **Railway / Fly.io / a VPS:** build the Dockerfile, mount a volume at `/data`, set `APP_SECRET`
+  (any long random string – it encrypts stored LinkedIn sessions).
+
+### Frontend on Vercel + backend elsewhere
+1. Deploy the backend as above and note its URL, e.g. `https://linkedin-auto.onrender.com`.
+2. In the Vercel project set the environment variable `VITE_API_URL` to that URL and redeploy
+   (`vercel.json` already builds `frontend/`).
+3. On the backend set `CORS_ORIGIN` to your Vercel URL and `PUBLIC_APP_URL` to it as well
+   (used for team invite links).
+
+### Backend environment variables
+See `backend/.env.example`: `APP_SECRET` (required in production), `PORT`, `DATA_DIR`, `CORS_ORIGIN`,
+`LINKEDIN_DRIVER` (`playwright` | `simulated`), `HEADLESS`, `PUBLIC_APP_URL`, `TRUST_PROXY`,
+`MAX_BROWSER_CONTEXTS` (open Chromium sessions at once, default 3 – each needs ~150–300 MB), `ENGINE_TICK_MS`.
