@@ -1,46 +1,36 @@
-import {
-  Eye,
-  Rss,
-  Award,
-  ThumbsUp,
-  UserPlus,
-  MessageSquare,
-  UserMinus,
-  AtSign,
-  Mail,
-  GitBranch,
-  Flag,
-  type LucideIcon,
-} from 'lucide-react'
-import type { StepKind } from '../../types'
+import { Eye, Rss, ThumbsUp, UserPlus, MessageSquare, UserMinus, GitBranch, Flag, UserCheck, Reply, Link2, type LucideIcon } from 'lucide-react'
+import type { ConditionKind, StepKind } from '@shared/types.ts'
 import { STEP_META } from '../../lib/sequence'
+import { cn } from '../../lib/utils'
 
 export const STEP_ICON: Record<StepKind, LucideIcon> = {
   view_profile: Eye,
   follow: Rss,
-  endorse: Award,
   like_post: ThumbsUp,
   invite: UserPlus,
   message: MessageSquare,
   withdraw: UserMinus,
-  find_email: AtSign,
-  email: Mail,
   condition: GitBranch,
   end: Flag,
+}
+
+export const CONDITION_ICON: Record<ConditionKind, LucideIcon> = {
+  accepted_invite: UserCheck,
+  replied: Reply,
+  is_connected: Link2,
 }
 
 /** Channel identity colors – always paired with an icon and a text label. */
 export const CHANNEL_STYLE = {
   linkedin: { fg: 'text-info', bg: 'bg-info/15', ring: 'border-info/40', label: 'LinkedIn' },
-  email: { fg: 'text-accent', bg: 'bg-accent/15', ring: 'border-accent/40', label: 'Email' },
   logic: { fg: 'text-brand', bg: 'bg-brand/15', ring: 'border-brand/40', label: 'Logic' },
 } as const
 
-export function StepIcon({ kind, size = 18 }: { kind: StepKind; size?: number }) {
-  const Icon = STEP_ICON[kind]
-  const ch = CHANNEL_STYLE[STEP_META[kind].channel]
+export function StepIcon({ kind, condition, size = 18, className }: { kind: StepKind; condition?: ConditionKind; size?: number; className?: string }) {
+  const Icon = (kind === 'condition' && condition && CONDITION_ICON[condition]) || STEP_ICON[kind] || GitBranch
+  const ch = CHANNEL_STYLE[STEP_META[kind]?.channel ?? 'logic']
   return (
-    <span className={`grid size-9 shrink-0 place-items-center rounded-lg ${ch.bg} ${ch.fg}`}>
+    <span className={cn('grid size-9 shrink-0 place-items-center rounded-lg', ch.bg, ch.fg, className)} aria-hidden>
       <Icon size={size} />
     </span>
   )

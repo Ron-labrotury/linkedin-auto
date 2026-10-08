@@ -18,69 +18,67 @@ export const uid = (prefix = 'id') =>
 export const pct = (part: number, whole: number) =>
   whole > 0 ? Math.round((part / whole) * 100) : 0
 
+/** "3 leads", "1 lead" */
+export const plural = (n: number, word: string, many = `${word}s`) => `${n.toLocaleString('en-US')} ${n === 1 ? word : many}`
+
 export function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-export function formatDateTime(iso: string) {
-  const d = new Date(iso)
-  return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${d
-    .toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-    .toLowerCase()}`
+export function formatTime(iso: string) {
+  return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase()
 }
 
-export function timeAgo(iso: string) {
-  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
+export function formatDateTime(iso: string) {
+  const d = new Date(iso)
+  return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${formatTime(iso)}`
+}
+
+export function timeAgo(iso: string, now = Date.now()) {
+  const s = Math.floor((now - new Date(iso).getTime()) / 1000)
   if (s < 60) return 'just now'
   if (s < 3600) return `${Math.floor(s / 60)}m ago`
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`
   return `${Math.floor(s / 86400)}d ago`
 }
 
-export function defaultCampaignName() {
-  const d = new Date()
+/** "due now", "in 3 min", "in 2 h", "in 4 d" for a future instant. */
+export function timeUntil(iso: string, now = Date.now()) {
+  const s = Math.round((new Date(iso).getTime() - now) / 1000)
+  if (s < 30) return 'due now'
+  if (s < 3600) return `in ${Math.max(1, Math.round(s / 60))} min`
+  if (s < 86400) return `in ${Math.round(s / 3600)} h`
+  return `in ${Math.round(s / 86400)} d`
+}
+
+/** "at 9:00 am" today, "tomorrow at 9:00 am", otherwise "Mon, Oct 12 at 9:00 am" (viewer's local time). */
+export function formatWhen(iso: string, now = Date.now()) {
+  const d = new Date(iso)
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
+  const diff = Math.round((day(d) - day(new Date(now))) / 86_400_000)
+  const time = formatTime(iso)
+  if (diff === 0) return `at ${time}`
+  if (diff === 1) return `tomorrow at ${time}`
+  return `${d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} at ${time}`
+}
+
+export function defaultCampaignName(date = new Date()) {
   const p = (n: number) => String(n).padStart(2, '0')
-  return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`
+  return `Campaign ${p(date.getDate())}.${p(date.getMonth() + 1)}.${date.getFullYear()} ${p(date.getHours())}:${p(date.getMinutes())}`
 }
 
-/** Fill {{variables}} with lead data for previews. */
-export function renderTemplate(text: string, vars: Record<string, string>) {
-  return text.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k: string) => vars[k] ?? `{{${k}}}`)
+/** Structural equality for plain JSON data (sequences, settings), independent of key order. */
+export function jsonEqual(a: unknown, b: unknown) {
+  const canon = (v: unknown): unknown =>
+    Array.isArray(v)
+      ? v.map(canon)
+      : v && typeof v === 'object'
+        ? Object.fromEntries(
+            Object.keys(v)
+              .sort()
+              .filter((k) => (v as Record<string, unknown>)[k] !== undefined)
+              .map((k) => [k, canon((v as Record<string, unknown>)[k])]),
+          )
+        : v
+  return JSON.stringify(canon(a)) === JSON.stringify(canon(b))
 }
-
-const LINKEDIN_PROFILE_RE = /^https?:\/\/(www\.)?linkedin\.com\/in\/[A-Za-z0-9\-_%]+\/?(\?.*)?$/i
-
-export function parseProfileUrls(raw: string) {
-  const lines = raw.split(/[\n,\s]+/).map((l) => l.trim()).filter(Boolean)
-  const valid: string[] = []
-  const invalid: string[] = []
-  const seen = new Set<string>()
-  for (const l of lines) {
-    if (LINKEDIN_PROFILE_RE.test(l)) {
-      const norm = l.split('?')[0].replace(/\/?$/, '/').toLowerCase()
-      if (!seen.has(norm)) {
-        seen.add(norm)
-        valid.push(l)
-      }
-    } else invalid.push(l)
-  }
-  return { valid, invalid }
-}
-
-/** Derive a readable name from a LinkedIn slug like "mike-johnson-1918171691". */
-export function nameFromProfileUrl(url: string) {
-  const slug = url.split('/in/')[1]?.split(/[/?]/)[0] ?? 'linkedin-member'
-  const parts = decodeURIComponent(slug)
-    .split('-')
-    .filter((p) => p && !/^\d+$/.test(p) && !/^[0-9a-f]{6,}$/i.test(p))
-  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
-  return {
-    firstName: cap(parts[0] ?? 'LinkedIn'),
-    lastName: parts.slice(1).map(cap).join(' ') || 'Member',
-  }
-}
-
-export const isValidSearchUrl = (url: string, kind: 'search' | 'sales_nav') =>
-  kind === 'search'
-    ? /^https?:\/\/(www\.)?linkedin\.com\/search\/results\/people/i.test(url.trim())
-    : /^https?:\/\/(www\.)?linkedin\.com\/sales\/(search|lists)/i.test(url.trim())
